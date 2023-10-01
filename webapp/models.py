@@ -2,6 +2,9 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.db.models.signals import post_save
+import math
+import random
+
 
 class User(AbstractUser):
 	is_customer   = models.BooleanField(default=False)
@@ -16,8 +19,11 @@ class Customer(models.Model):
 	phone 		= models.CharField(max_length=10,blank=False)
 	address		= models.TextField()
 
+
 	def __str__(self):
-		return self.user.username
+		return self.user.username 
+
+
 	
 class Restaurant(models.Model):
 	user        = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
@@ -43,9 +49,12 @@ class Item(models.Model):
 	id 			= models.AutoField(primary_key=True)
 	fname 		= models.CharField(max_length=30,blank=False)
 	category 	= models.CharField(max_length=50,blank=False)
+	# price = 
+	itemPrice = models.CharField(default= '120' , blank=False, max_length=250)
+	like = models.IntegerField(default=1)
 
 	def __str__(self):
-		return self.fname
+		return self.fname+ "      " +self.itemPrice
 
 class Menu(models.Model):
 	id 		 = models.AutoField(primary_key=True)
@@ -96,6 +105,29 @@ class orderItem(models.Model):
 	def __str__(self):
 		return str(self.id) 
 
+
+class TimeStamp(models.Model):
+	created_at=models.DateTimeField(auto_now_add=True)
+	modified_at=models.DateTimeField(auto_now=True)
+
+
+	class Meta:
+		abstract=True
+
+		
+class UserPayment(TimeStamp):
+	app_user=models.ForeignKey(User, on_delete=models.CASCADE)
+	payment_bool=models.BooleanField(default=False)
+	stripe_checkout_id=models.CharField(max_length=500)
+
+
+class ItemLiked(models.Model):
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)
+    owner = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    
+
+    def __str__(self):
+        return self.item.fname
 
 
 

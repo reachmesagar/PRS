@@ -1,11 +1,20 @@
-from django.shortcuts import render, redirect,get_object_or_404
+from django.shortcuts import render, redirect,get_object_or_404, HttpResponse
 from django.contrib.auth import authenticate, login,logout
 from .forms import CustomerSignUpForm,RestuarantSignUpForm,CustomerForm,RestuarantForm
 from django.contrib.auth.decorators import login_required
 from collections import Counter
 from django.urls import reverse
 from django.db.models import Q
-from .models import Customer,Restaurant,Item,Menu,Order,orderItem,User
+from django.conf import settings
+from .models import Customer,Restaurant,Item,Menu,Order,orderItem,User,UserPayment, ItemLiked
+import stripe
+import pandas as pd
+from surprise import Dataset, Reader, KNNBasic
+from surprise.model_selection import train_test_split
+from surprise import accuracy
+from collections import defaultdict
+import math
+import random
 
 
 #### ---------- General Side -------------------#####
@@ -69,8 +78,14 @@ def customerLogin(request):
 		user     = authenticate(username=username,password=password)
 		if user is not None:
 			if user.is_active:
-				login(request,user)
-				return redirect("profile")
+				# login(request,user)
+				# return redirect("profile")
+				if user.is_customer:
+					login(request, user)
+					return redirect("profile")
+                
+				else:
+					return render(request, 'webapp/login.html', {'error_message': 'Access restricted to customers only.'})
 			else:
 				return render(request,'webapp/login.html',{'error_message':'Your account disable'})
 		else:
@@ -118,10 +133,14 @@ def updateCustomer(request,id):
 def restuarantMenu(request,pk=None):
 
 	menu = Menu.objects.filter(r_id=pk)
+	print("MENUU", menu)
+
+
 	rest = Restaurant.objects.filter(id=pk)
 
 	items =[]
 	for i in menu:
+		print("IDDD", i.id)
 		item = Item.objects.filter(fname=i.item_id)
 		for content in item:
 			temp=[]
@@ -131,7 +150,9 @@ def restuarantMenu(request,pk=None):
 			temp.append(i.id)
 			temp.append(rest[0].status)
 			temp.append(i.quantity)
+			temp.append(i.id)
 			items.append(temp)
+
 	context = {
 		'items'	: items,
 		'rid' 	: pk,
@@ -140,11 +161,144 @@ def restuarantMenu(request,pk=None):
 		'rinfo' : rest[0].info,
 		'rlocation':rest[0].location,
 	}
+
+	# print("ITEMMM IDD", context.get('rid'))
 	return render(request,'webapp/menu.html',context)
+
 
 
 @login_required(login_url='/login/user/')
 def checkout(request):
+	stripe.api_key=settings.STRIPE_SECRET_KEY
+	if request.POST:
+		addr  = request.POST['address']
+		ordid = request.POST['oid']
+		Order.objects.filter(id=int(ordid)).update(delivery_addr = addr,
+                                                    status=Order.ORDER_STATE_PLACED)
+		order=get_object_or_404(Order,id=ordid)
+		print(order.total_amount)
+		checkout_session=stripe.checkout.Session.create(
+		payment_method_types=['card'],
+		line_items=[
+			{
+				'price_data':{
+					'currency':'npr',
+					'unit_amount':order.total_amount*100,
+					'product_data':{
+						'name':'Order Food',
+					},
+				},
+			'quantity':1,
+
+			},
+		],
+		mode='payment',
+		success_url=settings.REDIRECT_DOMAIN+"/payment_successful?session_id={CHECKOUT_SESSION_ID}",
+		cancel_url=settings.REDIRECT_DOMAIN+"/payment_cancelled",
+	)
+		return redirect(checkout_session.url,code=303)
+	else:	
+		cart = request.COOKIES['cart'].split(",")
+		cart = dict(Counter(cart))
+		items = []
+		totalprice = 0
+		uid = User.objects.filter(username=request.user)
+		oid = Order()
+		oid.orderedBy = uid[0]
+		for x,y in cart.items():
+			item = []
+			it = Menu.objects.filter(id=int(x))
+			if len(it):
+				oiid=orderItem()
+				oiid.item_id=it[0]
+				oiid.quantity=int(y)
+				oid.r_id=it[0].r_id
+				oid.save()
+				oiid.ord_id =oid
+				oiid.save()
+				totalprice += int(y)*it[0].price
+				item.append(it[0].item_id.fname)
+				it[0].quantity = it[0].quantity - y
+				it[0].save()
+				item.append(y)
+				item.append(it[0].price*int(y))
+			
+			items.append(item)
+		oid.total_amount=totalprice
+		oid.save()
+
+		database_data = ItemLiked.objects.all()
+		data = [
+			# ('user1', 'item1', 5),
+			# ('user1', 'item2', 4),
+			# ('user2', 'item1', 3),
+			# ('user2', 'item2', 2),
+			# ('user3', 'item2', 4),
+			# ('user3', 'item3', 5),
+		]
+		for i in database_data:
+			data.append((i.owner.user.username, i.item.fname, i.item.like, ))
+			print(">>><<<<",i.item)
+		
+
+		print("FINALLL DATA",data)
+
+
+		
+		# Create a DataFrame from the data
+		reader = Reader(line_format='user item rating', sep=',')
+		dataset = Dataset.load_from_df(pd.DataFrame(data, columns=['user', 'item', 'rating']), reader)
+
+		# Build the full trainset
+		trainset = dataset.build_full_trainset()
+
+		# Use KNNBasic algorithm for collaborative filtering
+		sim_options = {'name': 'cosine', 'user_based': True}
+		algo = KNNBasic(sim_options=sim_options)
+
+		# Train the algorithm on the full trainset
+		algo.fit(trainset)
+
+		# Get top N recommendations for a specific user
+		def get_top_n_recommendations(predictions, n=3):
+			top_n = defaultdict(list)
+			for uid, iid, true_r, est, _ in predictions:
+				top_n[uid].append((iid, est))
+			
+			for uid, user_recs in top_n.items():
+				user_recs.sort(key=lambda x: x[1], reverse=True)
+				top_n[uid] = user_recs[:n]
+			
+			return top_n
+
+		testset = trainset.build_testset()
+		predictions = algo.test(testset)
+		top_n_recommendations = get_top_n_recommendations(predictions, n=3)
+		
+		result = []
+		
+		# Print top 3 recommendations for each user
+		for uid, user_recs in top_n_recommendations.items():
+			print(f"User {uid}:")
+			for i, (iid, est) in enumerate(user_recs, 1):
+				print(f"{i}: Item {iid} (Estimated Rating: {est:.2f})")
+				result.append({
+					'item':{iid}, 
+				})
+		
+		print("FINAL RESULT", result)
+		
+		context={
+			"items":items,
+			"totalprice":totalprice,
+			"oid":oid.id,
+			'recomendedItems': data,
+			'itemPrice' :  random.randint(45,120)     
+		}	
+
+		
+		return render(request,'webapp/order.html',context)
+
 	if request.POST:
 		addr  = request.POST['address']
 		ordid = request.POST['oid']
@@ -187,7 +341,21 @@ def checkout(request):
 		}	
 		return render(request,'webapp/order.html',context)
 
+def paymentsuccessful(request):
+	stripe.api_key=settings.STRIPE_SECRET_KEY
+	checkout_session_id=request.GET.get("session_id",None)
+	print(checkout_session_id)
+	session=stripe.checkout.Session.retrieve(checkout_session_id)
+	# customer=stripe.Customer.retrieve(session.customer)
+	user_payment=UserPayment(app_user=request.user,stripe_checkout_id=checkout_session_id,payment_bool=True)
+	
+	user_payment.save()
 
+	return render(request,"webapp/orderplaced.html")
+
+def payment_cancelled(request):
+		stripe.api_key=settings.STRIPE_SECRET_KEY
+		return render(request, "webapp/payment_cancelled.html")
 
 
 ####### ------------------- Restaurant Side ------------------- #####
@@ -221,13 +389,19 @@ def restLogin(request):
 		user     = authenticate(username=username,password=password)
 		if user is not None:
 			if user.is_active:
-				login(request,user)
-				return redirect("rprofile")
+				if user.is_restaurant:
+					login(request, user)
+					return redirect("rprofile")
+				else:
+					return render(request, 'webapp/restlogin.html', {'error_message': 'Access restricted to restaurant user only.'})
+				# login(request,user)
+				# return redirect("rprofile")
 			else:
 				return render(request,'webapp/restlogin.html',{'error_message':'Your account disable'})
 		else:
 			return render(request,'webapp/restlogin.html',{'error_message': 'Invalid Login'})
 	return render(request,'webapp/restlogin.html')
+
 
 
 # restaurant profile view
@@ -346,19 +520,34 @@ def orderlist(request):
 			order[0].save()
 
 	orders = Order.objects.filter(r_id=request.user.restaurant.id).order_by('-timestamp')
+	
 	corders = []
 
 	for order in orders:
-
 		user = User.objects.filter(id=order.orderedBy.id)
 		user = user[0]
 		corder = []
+		print("&&&", user)
+
+
 		if user.is_restaurant:
-			corder.append(user.restaurant.rname)
-			corder.append(user.restaurant.info)
+			resutrantusername = Restaurant.objects.filter(user = user)[0]
+			print("resturent result",resutrantusername)
+			corder.append(resutrantusername.rname)
+			# corder.append(user.restaurant.rname)
+			corder.append(resutrantusername.info)
 		else:
-			corder.append(user.customer.f_name)
-			corder.append(user.customer.phone)
+			custormerData = Customer.objects.filter(user = user)
+			print("customer result",custormerData)
+			# print(user.customer.f_name)
+			if len(custormerData) > 0 :
+				corder.append(custormerData[0].f_name)
+				corder.append(custormerData[0].phone)
+			else:
+				corder.append("sagar")
+				corder.append(98411504)
+				# print("Small lenght")
+			# corder.append(user.customer.phone)
 		items_list = orderItem.objects.filter(ord_id=order)
 
 		items = []
@@ -401,6 +590,50 @@ def orderlist(request):
 
 	return render(request,"webapp/order-list.html",context)
 	
+@login_required
+def order_history(request,pk=None):
+    try:
+        orders = Order.objects.all()
+    except Restaurant.DoesNotExist:
+        orders = []
+
+    context = {'orders': orders}
+    return render(request, 'webapp/order_history.html', context)
 
 
 
+def customerpurchasedhistory(request):
+    user = request.user
+    user_payments = UserPayment.objects.filter(app_user=user)
+    return render(request, "webapp/customer_purchased_history.html", {'user_payments': user_payments})
+
+def receipt(request):
+
+	return render(request, "webapp/pdf.html")
+
+def download(request):
+	return render()
+
+
+@login_required
+def itemlike (request, pk):
+	item = Item.objects.get(id= pk)
+
+	customer = Customer.objects.get(user = request.user)
+	
+	print("CUSTOMER", customer)
+	isLikedItem = ItemLiked.objects.filter(item = item, owner = customer)
+	
+	print("isLIKEDITEM", isLikedItem)
+
+	if (len(isLikedItem) > 0):
+		item = Item.objects.get(id = item.id)
+		item.like = item.like - 1
+		isLikedItem.delete()
+		return HttpResponse("<alert>Success DIsliked</alert>")
+	
+	ItemLiked.objects.create(item = item, owner = customer)
+	return HttpResponse("<alert>Liked Successfully</alert>")
+
+
+	

@@ -1,0 +1,19 @@
+<h1>Purchased History</h1>
+<table>
+  <thead>
+    <tr>
+      <th>Payment ID</th>
+      <th>Payment Status</th>
+      <th>Stripe checkout id</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user_payment in user_payments %}
+    <tr>
+      <td>{{ user_payment.id }}</td>
+      <td>{{ user_payment.payment_bool }}</td>
+      <td>{{user_payment.stripe_checkout_id}}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

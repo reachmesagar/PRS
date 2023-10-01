@@ -13,12 +13,12 @@
 						<th>Price</th>
 					</thead>
 					{% for x in items %}
-							<tr><td>{{x.0}}</td><td>{{x.1}}</td><td>&#x20b9; {{x.2}}</td></tr>
+							<tr><td>{{x.0}}</td><td>{{x.1}}</td><td>{{x.2}}</td></tr>
 					{% endfor %}
 
 				</table>
 				<br>
-				<span><b>Total price: </b></span><span> &#x20b9; {{totalprice}}
+				<span><b>Total price: </b></span><span>{{totalprice}}
 				</span>
 				<br>
 				<br>
@@ -30,8 +30,28 @@
 							<div><input type="text" name="address" style="width:60%; height: 60px;" required/></div>
 							<input type="hidden" name="oid" value="{{oid}}">
 							<br>
-							<input type="submit" class="btn btn-success btn-lg" value="Order" name="submit">
+							<div style="margin-top:40px; width:700px">
+								<Marquee style="margin-bottom:30px">Recomended food for buying</Marquee>
+								{% for x in recomendedItems %}
+								<div style="background-color:gray; padding-top:20px ; display:flex; justify-content:space-between">
+									<p class="mx-5; my-2" style="padding:10px; background-color:#f2f5f3; border-radius:10px">{{x.1}}</p>
+									<p class="mx-5; my-2" style="padding:10px; background-color:#f2f5f3; border-radius:10px">Rs.{{itemPrice}}</p>
+									
+				
+								</div>
+
+								{% endfor %}
+
+
+							<input type="submit" class="btn btn-success btn-lg mt-5" value="Order" name="submit">{{price_in_npr}}
+							<br>
+							
+							
 				</form>
+			
+			
+			</div>
+
 
 </div>
 

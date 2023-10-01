@@ -1,0 +1,28 @@
+{% extends 'webapp/base.html'%}
+{% block title %} Cart {% endblock %}
+
+{% block body %}
+<div class="container ">
+			<br>
+			<h3 class="text-info"><strong>Order Information :</strong></h3>
+			<br>
+				<table class="table table-hover table-bordered">
+					<thead>
+						<th>Item Name</th>
+						<th>Quantity</th>
+						<th>Price</th>
+					</thead>
+					{% for x in items %}
+							<tr><td>{{x.0}}</td><td>{{x.1}}</td><td>{{x.2}}</td></tr>
+					{% endfor %}
+
+				</table>
+				<br>
+				<span><b>Total price: </b></span><span>{{totalprice}}
+				</span>
+				<br>
+				<br>
+				<h3 class="text-center"><a href="{% url 'download' %}"><strong>Download</strong></a></h3>
+</div>
+
+{% endblock %}

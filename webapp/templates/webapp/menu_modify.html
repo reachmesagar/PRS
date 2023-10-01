@@ -59,8 +59,8 @@
 							{% endfor %}
 							</select>
 						</td>
-						<td><input type="number" value="" name="price"/></td>
-						<td><input type="number" value="" name="quantity"/>
+						<td><input type="number" minlength="0" placeholder="test"  value="" name="price"/></td>
+						<td><input type="number" minlength="0" placeholder="test" value="" name="quantity"/>
 						</td>
 						<td>
 							<input type="submit" value="Add" name="submit" class="btn  btn-primary btn-lg">
@@ -89,8 +89,8 @@
 					<td>{{x.2}}</td>
 					<td>
 						<form action="" method="POST">{% csrf_token %}
-							<input type="hidden" value="{{x.3}}" name="menuid">
-							<input type="submit" value="Delete" name="submit" class="btn btn-danger btn-lg">
+							<input type="hidden"  value="{{x.3}}" name="menuid">
+							<input type="submit"  value="Delete" name="submit" class="btn btn-danger btn-lg">
 					
 						</form>
 					</td>

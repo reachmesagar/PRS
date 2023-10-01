@@ -3,6 +3,7 @@
 
 {% block body %}
 {% for order in orders %}
+<!-- {% if order.5 != 4 %}  {# Exclude orders with status "Placed" #} -->
             <div class="container">
                     <div class="col-md-12 restaurent-title">
                         <div class="logo-title" style="border: 0;">
@@ -26,14 +27,14 @@
                                     </th>
                                 </thead>
                                 {% for x in order.2 %}
-                                    <tr><td>{{x.0}}</td><td>{{x.1}}</td><td>&#x20b9;{{x.2}}</td></tr>
+                                    <tr><td>{{x.0}}</td><td>{{x.1}}</td><td>{{x.2}}</td></tr>
                                 {% endfor %}
                             </table>
                         </div>
                     </div>
                     <div class="col-md-12 buy"  style="display: inline-block;">
                         <form action="" method="POST">{% csrf_token %}
-                        <span>Total price: &#x20b9;{{order.3}}</span>
+                        <span>Total price:{{order.3}}</span>
                         <span  style="display: inline;">Status:</span>
                         <select name="orderstatus">
                             {% if order.5 == 1 %}
@@ -80,5 +81,7 @@
                 
             
         </div>
+
+        {% endif %}
 {% endfor %}
 {% endblock %}
